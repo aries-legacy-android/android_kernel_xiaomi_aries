@@ -1116,11 +1116,11 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 
 	mutex_lock(&vctrl->update_lock);
 	if (!vctrl->clk_enabled) {
-		atomic_dec(&in_drawing);
-		pr_err("%s: mdp clocks disabled\n", __func__);
-		mutex_unlock(&vctrl->update_lock);
-		return;
-
+		/* GB has no overlay client to enable MDP clocks before pan-display. */
+		mipi_dsi_clk_cfg(1);
+		mdp_clk_ctrl(1);
+		vctrl->clk_enabled = 1;
+		vctrl->clk_control = 0;
 	}
 	mutex_unlock(&vctrl->update_lock);
 

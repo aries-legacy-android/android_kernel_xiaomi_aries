@@ -11,6 +11,9 @@ else
 	KERNEL_SOURCE := $(LOCAL_PATH)
 endif
 
+# Export an empty LOCALVERSION and pin down scripts/setlocalversion.
+export LOCALVERSION :=
+
 INSTALLED_KERNEL_TARGET := $(PRODUCT_OUT)/kernel
 KERNEL_OUT := $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ
 ABS_KERNEL_OUT := $(ANDROID_BUILD_TOP)/$(KERNEL_OUT)

@@ -816,17 +816,46 @@ static void mxt_clear_touch_event(struct mxt_data *data)
 	struct input_dev *input_dev = data->input_dev;
 	struct mxt_finger *finger = data->finger;
 	int id;
-	static int tracking_id = -2;
+
+	for (id = 0; id < MXT_MAX_FINGER; id++)
+		finger[id].status = MXT_RELEASE;
+
+	input_mt_sync(input_dev);
+	input_sync(input_dev);
+}
+
+/* GB drops a type A finger whose touch major or pressure is <= 0. */
+static void mxt_emit_finger(struct mxt_data *data, int id)
+{
+	struct input_dev *input_dev = data->input_dev;
+	int area = data->finger[id].area;
+	int pressure = data->finger[id].pressure;
+
+	if (area < 1)
+		area = 1;
+	if (pressure < 1)
+		pressure = 1;
+
+	input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, area);
+	input_report_abs(input_dev, ABS_MT_POSITION_X, data->finger[id].x);
+	input_report_abs(input_dev, ABS_MT_POSITION_Y, data->finger[id].y);
+	input_report_abs(input_dev, ABS_MT_PRESSURE, pressure);
+	input_mt_sync(input_dev);
+}
+
+/* Key-only frames must repeat every finger or GB ends the drag. */
+static void mxt_emit_mt_state(struct mxt_data *data)
+{
+	int id;
 
 	for (id = 0; id < MXT_MAX_FINGER; id++) {
-		finger[id].status = MXT_RELEASE;
-		input_mt_slot(input_dev, id);
-		input_report_abs(input_dev, ABS_MT_TRACKING_ID, tracking_id--);
-		if (tracking_id >= 0)
-			tracking_id = -2;
+		if (!data->finger[id].status ||
+				data->finger[id].status == MXT_RELEASE)
+			continue;
+		mxt_emit_finger(data, id);
 	}
 
-	input_sync(input_dev);
+	input_mt_sync(data->input_dev);
 }
 
 static void mxt_input_report(struct mxt_data *data, int single_id)
@@ -841,7 +870,6 @@ static void mxt_input_report(struct mxt_data *data, int single_id)
 		if (!finger[id].status)
 			continue;
 
-		input_mt_slot(input_dev, id);
 		/* Firmware reports min/max values when the touch is
 		 * outside screen area. Send a release event in
 		 * such cases to avoid unwanted touches.
@@ -853,19 +881,9 @@ static void mxt_input_report(struct mxt_data *data, int single_id)
 			finger[id].status = MXT_RELEASE;
 		}
 
-		input_mt_report_slot_state(input_dev, MT_TOOL_FINGER,
-				finger[id].status != MXT_RELEASE);
-
 		if (finger[id].status != MXT_RELEASE) {
 			finger_num++;
-			input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR,
-					finger[id].area);
-			input_report_abs(input_dev, ABS_MT_POSITION_X,
-					finger[id].x);
-			input_report_abs(input_dev, ABS_MT_POSITION_Y,
-					finger[id].y);
-			input_report_abs(input_dev, ABS_MT_PRESSURE,
-					 finger[id].pressure);
+			mxt_emit_finger(data, id);
 			if (!data->is_land_signed) {
 				data->land_x = finger[id].x;
 				data->land_y = finger[id].y;
@@ -901,6 +919,8 @@ static void mxt_input_report(struct mxt_data *data, int single_id)
 		status = MXT_RELEASE;
 	}
 
+	/* Release frames need SYN_MT_REPORT or SYN_REPORT is dropped. */
+	input_mt_sync(input_dev);
 	input_sync(input_dev);
 }
 
@@ -947,6 +967,7 @@ static void mxt_input_touchevent(struct mxt_data *data,
 			id, status & MXT_MOVE ? "moved" : "pressed",
 			x, y, area, pressure);
 	}
+
 
 	finger[id].status = status & MXT_MOVE ?
 				MXT_MOVE : MXT_PRESS;
@@ -1000,8 +1021,10 @@ static void mxt_handle_key_array(struct mxt_data *data,
 
 		input_report_key(data->input_dev, data->pdata->key_codes[i],
 					(data->keyarray_new & (1 << i)));
-		input_sync(data->input_dev);
 	}
+
+	mxt_emit_mt_state(data);
+	input_sync(data->input_dev);
 
 	dev_info(&data->client->dev, "Key count = %d\n", data->key_pressed_count);
 
@@ -3084,8 +3107,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	__set_bit(EV_KEY, input_dev->evbit);
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 
-	/* For multi touch */
-	input_mt_init_slots(input_dev, MXT_MAX_FINGER);
+	/* Slots filter unchanged ABS_MT_* values; type A needs every value. */
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
 			     0, MXT_MAX_AREA, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,

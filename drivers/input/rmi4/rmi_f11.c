@@ -1087,13 +1087,11 @@ static void rmi_f11_abs_pos_report(struct f11_data *f11,
 
 	pr_debug("%s: f_state[%d]:%d - x:%d y:%d z:%d w_max:%d w_min:%d\n",
 		__func__, n_finger, finger_state, x, y, z, w_max, w_min);
-#ifndef CONFIG_RMI4_F11_PEN
-	/* Some UIs ignore W of zero, so we fudge it to 1 for pens. */
-	if (get_tool_type(sensor, finger_state) == MT_TOOL_PEN) {
-		w_max = max(1, w_max);
-		w_min = max(1, w_min);
-	}
-#endif
+
+	/* GB drops a type A finger whose pressure or touch major is <= 0. */
+	z = max(1, z);
+	w_max = max(1, w_max);
+	w_min = max(1, w_min);
 
 #ifdef CONFIG_RMI4_F11_TYPEB
 	if (f11->type_b) {

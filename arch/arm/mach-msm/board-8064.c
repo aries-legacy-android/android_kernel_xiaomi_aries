@@ -2630,7 +2630,8 @@ static struct rmi_device_platform_data rmi_data = {
 	.landing_threshold	= 24,
 	.landing_jiffies	= HZ/8,
 	},
-	.f11_type_b		= true,
+	/* GB only parses type A packets; F11 must not use slots. */
+	.f11_type_b		= false,
 	.reset_delay_ms		= 65,
 	.power_management	= {
 	.nosleep		= RMI_F01_NOSLEEP_ON,
